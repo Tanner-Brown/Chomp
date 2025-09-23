@@ -130,6 +130,10 @@ def listen(sock, game_queue, game_started_flag, player_id, game_ref):
             _, _, r, c = msg
             game_queue.put(("opponent_move", r, c))
 
+        # Handling invalid move
+        elif msg[0] == 230:
+            game_queue.put(("invalid_move", None))
+
         # Opponent left
         elif msg[0] == 111:
             if game_started_flag[0]:
@@ -164,11 +168,27 @@ def game_loop(sock, player_id):
             elif item[0] == "opponent_move":
                 r, c = item[1], item[2]
                 if game[0]:
-                    game[0].make_move(r, c)
-                    print(f"Opponent moved at ({r},{c})")
-                    print(game[0].render())
-                    if game[0].winner is None:
+
+                    # Make negative moves 0
+                    r = max(0, r)
+                    c = max(0, c)
+
+                    if game[0].valid_move(r, c):
+                        game[0].make_move(r, c)
+                        print(f"Opponent moved at ({r},{c})")
+                        print(game[0].render())
+                        # print winner before connection closes
+                        if game[0].winner is not None:
+                            print(f"Game over! Winner: Player {game[0].winner}")
+                            return
                         my_turn = True
+                    else:
+                        print(f"Opponent made invalid move at ({r},{c})")
+                        send_json(sock, [230, "invalid"])
+
+            elif item[0] == "invalid_move":
+                print("You made an invalid move.")
+                my_turn = True
             elif item[0] == "end":
                 return
 
@@ -178,6 +198,11 @@ def game_loop(sock, player_id):
             try:
                 raw = input("Enter Move (row col): ")
                 r, c = map(int, raw.split())
+
+                # Make negative moves 0
+                r = max(0, r)
+                c = max(0, c)
+
                 if game[0].valid_move(r, c):
                     game[0].make_move(r, c)
                     send_json(sock, [220, "move", r, c])
